@@ -1,31 +1,26 @@
 import javafx.application.Application;
 import javafx.geometry.Insets;
+import javafx.geometry.Orientation;
 import javafx.geometry.Pos;
 import javafx.scene.Scene;
-import javafx.scene.control.Label;
-import javafx.scene.control.ScrollPane;
-import javafx.scene.control.TextArea;
-import javafx.scene.control.TextField;
+import javafx.scene.control.*;
 import javafx.scene.layout.BorderPane;
 import javafx.stage.Stage;
+
 import java.io.*;
 import java.net.Socket;
+import java.util.Scanner;
 
 public class ChatClient extends Application {
 
-    /**
-     * IO Stream.
-     */
-    static DataOutputStream toServer = null;
-
-    /**
-     * IO Stream.
-     */
-    DataInputStream fromServer = null;
-
-
-    private static int portNumber;
+    private ChatClient.MessageReader messageReader;
+    private TextArea area;
+    private TextField field;
+    private Socket socket;
+    private Scanner input;
+    private PrintWriter output;
     private static String userName;
+    private static int portNumber;
 
     @Override
     public void start(Stage stage) {
@@ -34,45 +29,34 @@ public class ChatClient extends Application {
         fieldPane.setPadding(new Insets(5, 5, 5, 5));
         fieldPane.setLeft(new Label("Enter text: "));
 
-        TextField field = new TextField();
+        field = new TextField();
         field.setAlignment(Pos.BOTTOM_LEFT);
         fieldPane.setCenter(field);
 
         BorderPane mainPane = new BorderPane();
-        TextArea area = new TextArea();
+        area = new TextArea();
         area.setEditable(false);
+        area.setWrapText(true);
+        area.setPrefSize(600, 400);
         mainPane.setCenter(new ScrollPane(area));
-        mainPane.setTop(fieldPane);
+        mainPane.setBottom(fieldPane);
 
-        Scene scene = new Scene(mainPane, 450, 200);
+        Button sendBtn = new Button("Send");
+        sendBtn.setOnAction(event -> this.sendMessage());
+        Button disconnectBtn = new Button("Disconnect");
+        disconnectBtn.setOnAction(event -> this.disconnect());
+        ToolBar toolBar = new ToolBar();
+        toolBar.setOrientation(Orientation.VERTICAL);
+        mainPane.setLeft(toolBar);
+
+
+        toolBar.getItems().addAll(sendBtn, disconnectBtn);
+        Scene scene = new Scene(mainPane, 850, 400);
         stage.setTitle("Client");
         stage.setScene(scene);
         stage.show();
 
-
-        try {
-            Socket socket = new Socket("localhost", portNumber);
-            fromServer = new DataInputStream(socket.getInputStream());
-            toServer = new DataOutputStream(socket.getOutputStream());
-            toServer.writeUTF("connect" + userName);
-        } catch (Exception e) {
-            area.appendText(e.toString() + '\n');
-        }
-
-        field.setOnAction(e -> {
-            try {
-                String normal = field.getText();
-
-                toServer.writeUTF(userName + ": " + normal);
-                toServer.flush();
-
-                String response = fromServer.readUTF();
-
-                area.appendText(response);
-            } catch (Exception e2) {
-                area.appendText(e2.toString() + '\n');
-            }
-        });
+        connect();
 
     }
 
@@ -81,15 +65,78 @@ public class ChatClient extends Application {
         userName = "Anonymous";
         portNumber = 4688;
 
-        if(args.length > 0) {
+        if (args.length > 0) {
             userName = args[0];
             if (args.length > 1) {
                 portNumber = Integer.parseInt(args[1]);
             }
         }
 
-        Application.launch(args);
+        launch(args);
+    }
+
+    void connect() {
+        try {
+            this.socket = new Socket("localhost", portNumber);
+            this.input = new Scanner(this.socket.getInputStream());
+            this.output = new PrintWriter(this.socket.getOutputStream(), true);
+            this.messageReader = new ChatClient.MessageReader();
+            this.messageReader.start();
+            this.output.println("connect " + userName);
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+    }
+
+    void disconnect() {
+        this.output.println("disconnect " + userName);
+        this.messageReader.disconnect();
+
+        try {
+            this.socket.close();
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+
+        System.exit(0);
+    }
+
+    void sendMessage() {
+        String text = this.field.getText();
+        this.addMessage(text + "\n");
+        this.output.println(text);
+        this.field.setText("");
+    }
+
+    synchronized void addMessage(String msg) {
+        this.area.appendText(msg);
     }
 
 
+    class MessageReader extends Thread {
+        boolean done = false;
+
+        void disconnect() {
+            this.done = true;
+        }
+
+        public void run() {
+            while (!this.done) {
+                String msg = this.read();
+                if (msg != null) {
+                    ChatClient.this.addMessage(msg + "\n");
+                }
+            }
+
+        }
+
+        String read() {
+            if (ChatClient.this.input.hasNextLine()) {
+                return ChatClient.this.input.nextLine();
+            }
+            return null;
+        }
+    }
 }
+
+
