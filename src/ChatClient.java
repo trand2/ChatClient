@@ -52,7 +52,7 @@ public class ChatClient extends Application {
 
         toolBar.getItems().addAll(sendBtn, disconnectBtn);
         Scene scene = new Scene(mainPane, 850, 400);
-        stage.setTitle("Client");
+        stage.setTitle("Client " + userName);
         stage.setScene(scene);
         stage.show();
 
@@ -103,7 +103,7 @@ public class ChatClient extends Application {
 
     void sendMessage() {
         String text = this.field.getText();
-        this.addMessage(text + "\n");
+        this.addMessage("Me: " + text + "\n");
         this.output.println(text);
         this.field.setText("");
     }
